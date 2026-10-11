@@ -1,0 +1,43 @@
+name: release
+
+# 推 tag（如 v1.5.1）即发布到 npm；凭据取自仓库 secret NPM_TOKEN。
+# 需要 @ricenote scope 的 publish 权限。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: 校验 tag 与包版本一致
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          MANIFEST="$(node -p "require('./manifest.json').version")"
+          if [ "$TAG" != "$PKG" ] || [ "$TAG" != "$MANIFEST" ]; then
+            echo "tag=$TAG package=$PKG manifest=$MANIFEST 不一致，拒绝发布" >&2
+            exit 1
+          fi
+
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build
+
+      - name: 发布
+        run: pnpm publish --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
